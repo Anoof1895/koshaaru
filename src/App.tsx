@@ -10,6 +10,8 @@ import {
   Moon,
   Languages,
   ArrowUp,
+  RefreshCw,
+  X,
 } from 'lucide-react';
 import {
   isNativePlatform,
@@ -17,6 +19,11 @@ import {
   syncNativeStatusBar,
   triggerHaptic,
 } from './lib/native.ts';
+import {
+  applyDownloadedOtaBundle,
+  checkForOtaUpdate,
+  notifyOtaAppReady,
+} from './lib/otaUpdater.ts';
 import type {
   CategoryTag,
   DailyTarget,
@@ -113,6 +120,13 @@ export function App() {
   // Settings Modal state
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // Pending OTA update state (populated when a native bundle finishes downloading)
+  const [pendingOtaUpdate, setPendingOtaUpdate] = useState<{
+    version: string;
+    bundleId: string;
+  } | null>(null);
+  const [otaBannerDismissed, setOtaBannerDismissed] = useState(false);
+
   // Floating Scroll-to-Top state (visible when scrolled > 400px)
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -163,6 +177,30 @@ export function App() {
   useEffect(() => {
     loadUserPersistence();
   }, [loadUserPersistence]);
+
+  // Notify CapacitorUpdater immediately on boot so valid bundles never auto-rollback,
+  // and run a silent OTA manifest check shortly after startup on native builds.
+  useEffect(() => {
+    void notifyOtaAppReady();
+    if (!isNativePlatform()) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void checkForOtaUpdate().then((res) => {
+        if (!cancelled && res.status === 'downloaded' && res.bundleId && res.latestVersion) {
+          setPendingOtaUpdate({
+            version: res.latestVersion,
+            bundleId: res.bundleId,
+          });
+        }
+      });
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   // Apply theme class to <html> and sync native Android Status Bar
   useEffect(() => {
@@ -696,6 +734,40 @@ export function App() {
 
         {/* Main View Canvas */}
         <main className="min-w-0 flex-1">
+          {pendingOtaUpdate && !otaBannerDismissed && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#0D6E6E]/35 bg-[#0D6E6E]/10 px-3.5 py-2.5 text-xs dark:border-[#2DD4BF]/35 dark:bg-[#2DD4BF]/12">
+              <div
+                dir={textDir}
+                className="font-semibold text-[#0D6E6E] dark:text-[#2DD4BF]"
+              >
+                {t(
+                  `އާ އަޕްޑޭޓެއް (v${pendingOtaUpdate.version}) ޑައުންލޯޑްވެއްޖެ. ރީސްޓާޓްކޮށްލުމުން އަޅާނެ.`,
+                  `Update v${pendingOtaUpdate.version} is downloaded and ready to apply.`,
+                  lang
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void applyDownloadedOtaBundle(pendingOtaUpdate.bundleId)}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-xl bg-[#0D6E6E] px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-[#095555] dark:bg-[#2DD4BF] dark:text-[#0B161A]"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span dir={textDir}>
+                    {t('މިހާރު އަޕްޑޭޓް އަޅާ', 'Restart & Apply', lang)}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOtaBannerDismissed(true)}
+                  aria-label="Dismiss update banner"
+                  className="cursor-pointer rounded-lg p-1 text-[#52636A] hover:bg-black/5 dark:text-[#9BB0B8]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
           {error ? (
             <div className="rounded-3xl border border-rose-300 bg-rose-50 p-6 text-sm text-rose-800 dark:border-rose-500/40 dark:bg-rose-950/30 dark:text-rose-200">
               {error}
@@ -749,6 +821,9 @@ export function App() {
                   }
                   onToggleEnglish={(enabled) =>
                     updateSettings({ ...settings, showEnglish: enabled })
+                  }
+                  onToggleTopicsExpanded={(expanded) =>
+                    updateSettings({ ...settings, topicsExpanded: expanded })
                   }
                   onInspectId={inspectId}
                   onInspectHeadword={inspectHeadword}
@@ -888,6 +963,11 @@ export function App() {
         settings={settings}
         report={report}
         categoryPools={gamePools?.categoryPools}
+        pendingOtaUpdate={pendingOtaUpdate}
+        onOtaUpdateDownloaded={(update) => {
+          setPendingOtaUpdate(update);
+          setOtaBannerDismissed(false);
+        }}
         onClose={() => setSettingsOpen(false)}
         onUpdateSettings={updateSettings}
         onImported={loadUserPersistence}

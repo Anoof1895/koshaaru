@@ -147,4 +147,5 @@ export interface UserSettings {
   phoneticImeEnabled: boolean;
   dailyReminderEnabled?: boolean;
   dailyReminderTime?: string;
+  topicsExpanded?: boolean;
 }

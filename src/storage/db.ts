@@ -62,6 +62,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   phoneticImeEnabled: false,
   dailyReminderEnabled: false,
   dailyReminderTime: '09:00',
+  topicsExpanded: true,
 };
 
 export const DEFAULT_GAME_STATS: GameStats = {
@@ -144,6 +145,10 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
   try {
     localStorage.setItem('dhivehi_hub_theme', settings.theme);
     localStorage.setItem('dhivehi_hub_lang', settings.uiLanguage);
+    localStorage.setItem(
+      'dhivehi_hub_topics_expanded',
+      String(settings.topicsExpanded ?? true)
+    );
   } catch {
     // Ignore storage quota / private mode warnings
   }

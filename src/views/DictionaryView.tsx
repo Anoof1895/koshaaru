@@ -58,6 +58,7 @@ interface Props {
   ) => Promise<SearchResponse>;
   onToggleIme: (enabled: boolean) => void;
   onToggleEnglish: (enabled: boolean) => void;
+  onToggleTopicsExpanded?: (expanded: boolean) => void;
   onInspectId: (id: number) => void;
   onInspectHeadword: (hw: string) => void;
   onSurpriseMe: (filters: SearchFilters) => void;
@@ -110,6 +111,7 @@ export function DictionaryView({
   searchFn,
   onToggleIme,
   onToggleEnglish,
+  onToggleTopicsExpanded,
   onInspectId,
   onInspectHeadword,
   onSurpriseMe,
@@ -119,7 +121,31 @@ export function DictionaryView({
   const [rawInput, setRawInput] = useState('');
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [topicsExpanded, setTopicsExpanded] = useState(true);
+  const [topicsExpanded, setTopicsExpanded] = useState<boolean>(() => {
+    if (typeof settings.topicsExpanded === 'boolean') {
+      return settings.topicsExpanded;
+    }
+    try {
+      const cached = localStorage.getItem('dhivehi_hub_topics_expanded');
+      if (cached === 'false') return false;
+      if (cached === 'true') return true;
+    } catch {
+      // Ignore storage access errors
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    if (typeof settings.topicsExpanded === 'boolean') {
+      setTopicsExpanded(settings.topicsExpanded);
+    }
+  }, [settings.topicsExpanded]);
+
+  const handleToggleTopicsExpanded = () => {
+    const next = !topicsExpanded;
+    setTopicsExpanded(next);
+    onToggleTopicsExpanded?.(next);
+  };
 
   const [filters, setFilters] = useState<Omit<SearchFilters, 'query'>>({
     matchMode: 'any',
@@ -635,7 +661,7 @@ export function DictionaryView({
 
           <button
             type="button"
-            onClick={() => setTopicsExpanded((v) => !v)}
+            onClick={handleToggleTopicsExpanded}
             className="inline-flex cursor-pointer items-center gap-1 rounded-xl px-2 py-1 text-xs font-semibold text-[#52636A] transition hover:bg-[#F2ECE1] hover:text-[#142126] dark:text-[#9BB0B8] dark:hover:bg-[#182C33] dark:hover:text-[#F1F5F9]"
           >
             <span dir={textDir}>

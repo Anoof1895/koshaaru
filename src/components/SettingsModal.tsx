@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { X, Download, Upload, Sun, Moon, Languages, Database, Bell } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, Download, Upload, Sun, Moon, Languages, Database, Bell, RefreshCw } from 'lucide-react';
 import type {
   CategoryTag,
   DailyTarget,
@@ -22,6 +22,12 @@ import {
 import { toggleActiveDeckSmart } from '../lib/dailyQueue.ts';
 import { exportAllProgress, importAllProgress } from '../storage/db.ts';
 import { syncDailyReminderNotification } from '../lib/native.ts';
+import {
+  APP_VERSION,
+  applyDownloadedOtaBundle,
+  checkForOtaUpdate,
+  getActiveAppVersion,
+} from '../lib/otaUpdater.ts';
 import { CategoryIcon } from './CategoryIcon.tsx';
 
 interface Props {
@@ -29,6 +35,8 @@ interface Props {
   settings: UserSettings;
   report: PipelineReport | null;
   categoryPools?: Record<CategoryTag, number[]>;
+  pendingOtaUpdate?: { version: string; bundleId: string } | null;
+  onOtaUpdateDownloaded?: (update: { version: string; bundleId: string }) => void;
   onClose: () => void;
   onUpdateSettings: (next: UserSettings) => void;
   onImported: () => void;
@@ -39,6 +47,8 @@ export function SettingsModal({
   settings,
   report,
   categoryPools,
+  pendingOtaUpdate,
+  onOtaUpdateDownloaded,
   onClose,
   onUpdateSettings,
   onImported,
@@ -46,9 +56,32 @@ export function SettingsModal({
   const fileRef = useRef<HTMLInputElement>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [reminderMsg, setReminderMsg] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState(APP_VERSION);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [otaMsg, setOtaMsg] = useState<string | null>(null);
   const lang = settings.uiLanguage;
 
+  useEffect(() => {
+    if (!open) return;
+    void getActiveAppVersion().then(setAppVersion);
+  }, [open]);
+
   if (!open) return null;
+
+  const handleCheckUpdates = async () => {
+    setCheckingUpdate(true);
+    setOtaMsg(null);
+    const res = await checkForOtaUpdate();
+    setAppVersion(res.currentVersion);
+    setOtaMsg(lang === 'en' ? res.messageEn : res.messageDv);
+    if (res.status === 'downloaded' && res.bundleId && res.latestVersion) {
+      onOtaUpdateDownloaded?.({
+        version: res.latestVersion,
+        bundleId: res.bundleId,
+      });
+    }
+    setCheckingUpdate(false);
+  };
 
   const reminderEnabled = Boolean(settings.dailyReminderEnabled);
   const reminderTime = settings.dailyReminderTime ?? '09:00';
@@ -382,6 +415,82 @@ export function SettingsModal({
               >
                 {reminderMsg}
               </p>
+            )}
+          </div>
+
+          {/* App Updates (OTA) */}
+          <div className="rounded-2xl border border-[#E4DCCE] bg-white p-4 dark:border-[#213840] dark:bg-[#132329]">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div
+                  dir={textDir}
+                  className="text-sm font-semibold text-[#142126] dark:text-[#F1F5F9]"
+                >
+                  {t('އެޕް އަޕްޑޭޓް', 'App Updates', lang)}
+                </div>
+                <div
+                  dir={textDir}
+                  className="text-xs text-[#52636A] dark:text-[#9BB0B8]"
+                >
+                  {t(
+                    `މިހާރުގެ ވާޝަން: v${appVersion}`,
+                    `Current version: v${appVersion}`,
+                    lang
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={checkingUpdate}
+                onClick={() => void handleCheckUpdates()}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-[#E4DCCE] bg-[#FAF7F2] px-3 py-2 text-xs font-semibold text-[#142126] transition hover:bg-[#F2ECE1] disabled:opacity-60 dark:border-[#213840] dark:bg-[#182C33] dark:text-[#F1F5F9]"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 text-[#0D6E6E] dark:text-[#2DD4BF] ${
+                    checkingUpdate ? 'animate-spin' : ''
+                  }`}
+                />
+                <span dir={textDir}>
+                  {checkingUpdate
+                    ? t('ބަލަނީ...', 'Checking...', lang)
+                    : t('އަޕްޑޭޓް އޮތްތޯ ބަލާ', 'Check for App Updates', lang)}
+                </span>
+              </button>
+            </div>
+
+            {otaMsg && (
+              <p
+                dir={textDir}
+                className="mt-2.5 text-xs font-medium text-[#0D6E6E] dark:text-[#2DD4BF]"
+              >
+                {otaMsg}
+              </p>
+            )}
+
+            {pendingOtaUpdate && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#0D6E6E]/30 bg-[#0D6E6E]/8 px-3 py-2 dark:border-[#2DD4BF]/30 dark:bg-[#2DD4BF]/10">
+                <span
+                  dir={textDir}
+                  className="text-xs font-semibold text-[#0D6E6E] dark:text-[#2DD4BF]"
+                >
+                  {t(
+                    `v${pendingOtaUpdate.version} ތައްޔާރު!`,
+                    `v${pendingOtaUpdate.version} ready to apply`,
+                    lang
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void applyDownloadedOtaBundle(pendingOtaUpdate.bundleId)}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[#0D6E6E] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#095555] dark:bg-[#2DD4BF] dark:text-[#0B161A]"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  <span dir={textDir}>
+                    {t('މިހާރު އަޕްޑޭޓް އަޅާ', 'Restart & Apply', lang)}
+                  </span>
+                </button>
+              </div>
             )}
           </div>
 

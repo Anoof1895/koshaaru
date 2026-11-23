@@ -1,0 +1,85 @@
+name: Publish OTA Web Bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Override version (defaults to package.json version)'
+        required: false
+        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'vite.config.ts'
+      - '.github/workflows/ota-update.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-ota:
+    name: Build & Publish OTA Bundle to GitHub Releases
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web bundle
+        run: npm run build
+
+      - name: Package OTA bundle & manifest
+        id: package
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          VERSION="${VERSION#v}"
+          (cd dist && zip -r ../ota-bundle.zip .)
+          SHA256=$(sha256sum ota-bundle.zip | awk '{print $1}')
+          PUBLISHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          TAG="v${VERSION}"
+          BUNDLE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/ota-bundle.zip"
+          node -e '
+            const fs = require("fs");
+            const manifest = {
+              version: process.argv[1],
+              url: process.argv[2],
+              sha256: process.argv[3],
+              publishedAt: process.argv[4],
+            };
+            fs.writeFileSync("ota-manifest.json", JSON.stringify(manifest, null, 2) + "\n");
+          ' "$VERSION" "$BUNDLE_URL" "$SHA256" "$PUBLISHED_AT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+          cat ota-manifest.json
+
+      - name: Publish OTA Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.package.outputs.tag }}
+          name: "Koshaaru ${{ steps.package.outputs.tag }}"
+          body: |
+            Automated OTA web bundle release for Koshaaru `${{ steps.package.outputs.version }}`.
+            - Bundle SHA-256: `${{ steps.package.outputs.sha256 }}`
+          draft: false
+          prerelease: false
+          files: |
+            ota-bundle.zip
+            ota-manifest.json

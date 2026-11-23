@@ -95,8 +95,9 @@ describe('Native Mobile UX & Capacitor Bridge Helpers', () => {
     expect(disabledRes.messageEn).toContain('turned off');
   });
 
-  it('includes dailyReminderEnabled and dailyReminderTime in DEFAULT_SETTINGS', () => {
+  it('includes dailyReminderEnabled, dailyReminderTime, and topicsExpanded in DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.dailyReminderEnabled).toBe(false);
     expect(DEFAULT_SETTINGS.dailyReminderTime).toBe('09:00');
+    expect(DEFAULT_SETTINGS.topicsExpanded).toBe(true);
   });
 });
